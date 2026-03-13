@@ -66,19 +66,54 @@ def upsert_to_master(data):
             clean_pub_date = pd.to_datetime(raw_pub_date).date() if raw_pub_date else None
 
         cur.execute("""
-            INSERT INTO articles_master (
-                article_id, headline, slug, body, last_modified
-            ) VALUES (%s, %s, %s, %s, NOW())
-            ON CONFLICT (article_id) DO UPDATE SET
-                headline = EXCLUDED.headline,
-                slug = EXCLUDED.slug,
-                body = EXCLUDED.body,
-                last_modified = NOW();
-        """, (
+        INSERT INTO articles_master (
             article_id,
+            headline,
+            subheadline,
+            description,
+            body,
+            slug,
+            post_url,
+            image,
+            created_ts,
+            provider_id,
+            public_tags,
+            sections,
+            listicle,
+            roar_specific_data,
+            last_modified
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+        ON CONFLICT (article_id) DO UPDATE SET
+            headline = EXCLUDED.headline,
+            subheadline = EXCLUDED.subheadline,
+            description = EXCLUDED.description,
+            body = EXCLUDED.body,
+            slug = EXCLUDED.slug,
+            post_url = EXCLUDED.post_url,
+            image = EXCLUDED.image,
+            created_ts = EXCLUDED.created_ts,
+            provider_id = EXCLUDED.provider_id,
+            public_tags = EXCLUDED.public_tags,
+            sections = EXCLUDED.sections,
+            listicle = EXCLUDED.listicle,
+            roar_specific_data = EXCLUDED.roar_specific_data,
+            last_modified = NOW();
+        """, (
+            data.get("id"),
             data.get("headline"),
+            data.get("subheadline"),
+            data.get("description"),
+            data.get("body"),
             data.get("manual_basename") or data.get("slug"),
-            data.get("body")
+            data.get("post_url"),
+            data.get("image"),
+            data.get("created_ts"),
+            data.get("provider_id"),
+            json.dumps(data.get("public_tags")),
+            json.dumps(data.get("sections")),
+            json.dumps(data.get("listicle")),
+            json.dumps(data.get("roar_specific_data"))
         ))
         conn.commit()
         logging.info(f"Successfully synced Article ID: {article_id}")
