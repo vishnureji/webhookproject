@@ -67,25 +67,17 @@ def upsert_to_master(data):
 
         cur.execute("""
             INSERT INTO articles_master (
-                article_id, headline, slug, author_id, author_name,
-                pub_date, post_url, body, last_modified
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                article_id, headline, slug, body, last_modified
+            ) VALUES (%s, %s, %s, %s, NOW())
             ON CONFLICT (article_id) DO UPDATE SET
                 headline = EXCLUDED.headline,
                 slug = EXCLUDED.slug,
-                author_name = EXCLUDED.author_name,
-                pub_date = EXCLUDED.pub_date,
-                post_url = EXCLUDED.post_url,
                 body = EXCLUDED.body,
                 last_modified = NOW();
         """, (
             article_id,
             data.get("headline"),
             data.get("manual_basename") or data.get("slug"),
-            primary_author_id,
-            author_name,
-            clean_pub_date,
-            data.get("post_url") or data.get("url"),
             data.get("body")
         ))
         conn.commit()
