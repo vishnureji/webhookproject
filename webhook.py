@@ -45,62 +45,63 @@ def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
 def upsert_to_master(data):
     """Upserts RebelMouse post data and logs the process."""
     conn = None
+    cur = None  # FIX: initialise cur to None so finally block is always safe
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
 
-        # ID Mapping
         article_id = data.get("id") or data.get("post_id")
 
-        # Author Mapping
-        author_ids = data.get("roar_author_ids", [])
-        primary_author_id = author_ids[0] if author_ids else data.get("author_id")
-        author_name = data.get("author_title") or data.get("author_name")
+        # FIX: guard against missing article_id before hitting the DB
+        if not article_id:
+            raise ValueError("Payload contains no usable article ID (id / post_id)")
 
-        # Date Mapping
-        ts = data.get("created_ts")
-        if ts:
-            clean_pub_date = datetime.fromtimestamp(ts).date()
-        else:
-            raw_pub_date = data.get("publish_date") or data.get("publication_date")
-            clean_pub_date = pd.to_datetime(raw_pub_date).date() if raw_pub_date else None
+        # FIX: created_ts must be an integer timestamp; coerce or discard
+        raw_ts = data.get("created_ts")
+        created_ts = int(raw_ts) if raw_ts is not None else None
+
+        # FIX: serialise list/dict fields to JSON strings;
+        #      pass None (→ SQL NULL) when the field is absent rather than
+        #      json.dumps(None) which would insert the string "null"
+        def to_json(val):
+            return json.dumps(val) if val is not None else None
 
         cur.execute("""
-        INSERT INTO articles_master (
-            article_id,
-            headline,
-            subheadline,
-            description,
-            body,
-            slug,
-            post_url,
-            image,
-            created_ts,
-            provider_id,
-            public_tags,
-            sections,
-            listicle,
-            roar_specific_data,
-            last_modified
-        )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-        ON CONFLICT (article_id) DO UPDATE SET
-            headline = EXCLUDED.headline,
-            subheadline = EXCLUDED.subheadline,
-            description = EXCLUDED.description,
-            body = EXCLUDED.body,
-            slug = EXCLUDED.slug,
-            post_url = EXCLUDED.post_url,
-            image = EXCLUDED.image,
-            created_ts = EXCLUDED.created_ts,
-            provider_id = EXCLUDED.provider_id,
-            public_tags = EXCLUDED.public_tags,
-            sections = EXCLUDED.sections,
-            listicle = EXCLUDED.listicle,
-            roar_specific_data = EXCLUDED.roar_specific_data,
-            last_modified = NOW();
+            INSERT INTO articles_master (
+                article_id,
+                headline,
+                subheadline,
+                description,
+                body,
+                slug,
+                post_url,
+                image,
+                created_ts,
+                provider_id,
+                public_tags,
+                sections,
+                listicle,
+                roar_specific_data,
+                last_modified
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+            ON CONFLICT (article_id) DO UPDATE SET
+                headline          = EXCLUDED.headline,
+                subheadline       = EXCLUDED.subheadline,
+                description       = EXCLUDED.description,
+                body              = EXCLUDED.body,
+                slug              = EXCLUDED.slug,
+                post_url          = EXCLUDED.post_url,
+                image             = EXCLUDED.image,
+                created_ts        = EXCLUDED.created_ts,
+                provider_id       = EXCLUDED.provider_id,
+                public_tags       = EXCLUDED.public_tags,
+                sections          = EXCLUDED.sections,
+                listicle          = EXCLUDED.listicle,
+                roar_specific_data = EXCLUDED.roar_specific_data,
+                last_modified     = NOW();
         """, (
-            data.get("id"),
+            article_id,
             data.get("headline"),
             data.get("subheadline"),
             data.get("description"),
@@ -108,12 +109,12 @@ def upsert_to_master(data):
             data.get("manual_basename") or data.get("slug"),
             data.get("post_url"),
             data.get("image"),
-            data.get("created_ts"),
+            created_ts,
             data.get("provider_id"),
-            json.dumps(data.get("public_tags")),
-            json.dumps(data.get("sections")),
-            json.dumps(data.get("listicle")),
-            json.dumps(data.get("roar_specific_data"))
+            to_json(data.get("public_tags")),
+            to_json(data.get("sections")),
+            to_json(data.get("listicle")),
+            to_json(data.get("roar_specific_data")),
         ))
         conn.commit()
         logging.info(f"Successfully synced Article ID: {article_id}")
@@ -125,8 +126,10 @@ def upsert_to_master(data):
         raise e
 
     finally:
-        if conn:
+        # FIX: close cur before conn, and check both independently
+        if cur:
             cur.close()
+        if conn:
             conn.close()
 
 
