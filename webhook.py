@@ -67,7 +67,7 @@ def upsert_to_master(data):
             return json.dumps(val) if val is not None else None
 
         cur.execute("""
-    INSERT INTO articles_master (
+    INSERT INTO articles_with_authors (
         article_id,
         headline,
         post_url,
