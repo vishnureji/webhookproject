@@ -46,24 +46,23 @@ def upsert_to_master(data):
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
 
-        # ✅ Support both post_id and id
         post_id = data.get("post_id") or data.get("id")
 
         if not post_id:
             raise ValueError("Payload contains no usable article ID (id / post_id)")
 
-        # ✅ Coerce timestamps to int
+        # Coerce timestamps to int
         created_ts = int(data.get("created_ts")) if data.get("created_ts") is not None else None
         updated_ts = int(data.get("updated_ts")) if data.get("updated_ts") is not None else None
 
-        # ✅ Get authors array
+        # Get authors array — already normalized before this call
         authors = data.get("authors", [])
 
-        # ✅ If no authors, insert one row with null author fields
+        # If no authors, insert one row with null author fields
         if not authors:
             authors = [{}]
 
-        # ✅ Loop through each author and insert one row per author
+        # Loop through each author and insert one row per author
         for author in authors:
             cur.execute("""
                 INSERT INTO articles_with_authors (
@@ -130,11 +129,38 @@ async def rebelmouse_webhook(
         payload = await request.json()
         logging.info(f"Authorized Webhook ({authenticated_user}): {json.dumps(payload)}")
 
-        post_data = payload.get("post", payload)
+        # ✅ RebelMouse sends article data under the "payload" key
+        post_data_raw = payload.get("payload", payload)
 
-        if not (post_data.get("id") or post_data.get("post_id")):
+        if not (post_data_raw.get("id") or post_data_raw.get("post_id")):
             logging.warning("Webhook received but missing Article ID.")
             return {"status": "ignored", "message": "Missing ID"}
+
+        # ✅ Normalize roar_authors → authors with DB-expected field names
+        #    roar_authors[].id          → author_id
+        #    roar_authors[].title       → displayname  (falls back to .name)
+        #    roar_authors[].avatar      → photo
+        #    roar_authors[].profile_href → profile_url
+        roar_authors = post_data_raw.get("roar_authors", [])
+        normalized_authors = [
+            {
+                "author_id":   str(a.get("id")),
+                "displayname": a.get("title") or a.get("name"),
+                "photo":       a.get("avatar"),
+                "profile_url": a.get("profile_href"),
+            }
+            for a in roar_authors
+            if a.get("id")
+        ]
+
+        post_data = {
+            "post_id":    post_data_raw.get("id") or post_data_raw.get("post_id"),
+            "headline":   post_data_raw.get("headline"),
+            "post_url":   post_data_raw.get("post_url"),
+            "created_ts": post_data_raw.get("created_ts"),
+            "updated_ts": post_data_raw.get("updated_ts"),
+            "authors":    normalized_authors,
+        }
 
         upsert_to_master(post_data)
         return {"status": "success", "message": "Article Synced"}
