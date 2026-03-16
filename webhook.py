@@ -67,55 +67,40 @@ def upsert_to_master(data):
             return json.dumps(val) if val is not None else None
 
         cur.execute("""
-            INSERT INTO articles_master (
-                article_id,
-                headline,
-                subheadline,
-                description,
-                body,
-                slug,
-                post_url,
-                image,
-                created_ts,
-                provider_id,
-                public_tags,
-                sections,
-                listicle,
-                roar_specific_data,
-                last_modified
-            )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-            ON CONFLICT (article_id) DO UPDATE SET
-                headline          = EXCLUDED.headline,
-                subheadline       = EXCLUDED.subheadline,
-                description       = EXCLUDED.description,
-                body              = EXCLUDED.body,
-                slug              = EXCLUDED.slug,
-                post_url          = EXCLUDED.post_url,
-                image             = EXCLUDED.image,
-                created_ts        = EXCLUDED.created_ts,
-                provider_id       = EXCLUDED.provider_id,
-                public_tags       = EXCLUDED.public_tags,
-                sections          = EXCLUDED.sections,
-                listicle          = EXCLUDED.listicle,
-                roar_specific_data = EXCLUDED.roar_specific_data,
-                last_modified     = NOW();
-        """, (
-            article_id,
-            data.get("headline"),
-            data.get("subheadline"),
-            data.get("description"),
-            data.get("body"),
-            data.get("manual_basename") or data.get("slug"),
-            data.get("post_url"),
-            data.get("image"),
-            created_ts,
-            data.get("provider_id"),
-            to_json(data.get("public_tags")),
-            to_json(data.get("sections")),
-            to_json(data.get("listicle")),
-            to_json(data.get("roar_specific_data")),
-        ))
+    INSERT INTO articles_master (
+        article_id,
+        headline,
+        post_url,
+        created_ts,
+        updated_ts,
+        author_id,
+        displayname,
+        photo,
+        profile_url,
+        last_modified
+    )
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+    ON CONFLICT (article_id) DO UPDATE SET
+        headline      = EXCLUDED.headline,
+        post_url      = EXCLUDED.post_url,
+        created_ts    = EXCLUDED.created_ts,
+        updated_ts    = EXCLUDED.updated_ts,
+        author_id     = EXCLUDED.author_id,
+        displayname   = EXCLUDED.displayname,
+        photo         = EXCLUDED.photo,
+        profile_url   = EXCLUDED.profile_url,
+        last_modified = NOW();
+""", (
+    data.get("article_id"),
+    data.get("headline"),
+    data.get("post_url"),
+    data.get("created_ts"),
+    data.get("updated_ts"),
+    data.get("author_id"),
+    data.get("displayname"),
+    data.get("photo"),
+    data.get("profile_url"),
+))
         conn.commit()
         logging.info(f"Successfully synced Article ID: {article_id}")
 
